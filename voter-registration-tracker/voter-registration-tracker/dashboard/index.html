@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Voter Registration Tracker</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #ffffff;
+    --bg2:      #f5f4f0;
+    --bg3:      #eeece6;
+    --text:     #1a1a18;
+    --text2:    #5f5e5a;
+    --text3:    #888780;
+    --border:   rgba(0,0,0,0.12);
+    --border2:  rgba(0,0,0,0.22);
+    --radius:   8px;
+    --radius-lg:12px;
+    --dem:      #185fa5;
+    --dem-light:#e6f1fb;
+    --rep:      #a32d2d;
+    --rep-light:#fcebeb;
+    --ind:      #3b6d11;
+    --ind-light:#eaf3de;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:      #1c1c1a;
+      --bg2:     #252523;
+      --bg3:     #2e2e2b;
+      --text:    #f0efe9;
+      --text2:   #b4b2a9;
+      --text3:   #888780;
+      --border:  rgba(255,255,255,0.1);
+      --border2: rgba(255,255,255,0.2);
+    }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+  /* Header */
+  .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+  .page-title { font-size: 22px; font-weight: 500; }
+  .last-updated { font-size: 12px; color: var(--text3); margin-top: 4px; }
+  .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #3b6d11; margin-right: 5px; }
+
+  /* Summary cards */
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 1.5rem; }
+  .sum-card { background: var(--bg2); border-radius: var(--radius); padding: 12px 14px; }
+  .sum-label { font-size: 11px; color: var(--text3); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .sum-val { font-size: 22px; font-weight: 500; }
+  .sum-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+  /* Mode controls */
+  .controls { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 1rem; }
+  .pill { font-size: 12px; padding: 5px 14px; border-radius: 999px; border: 0.5px solid var(--border2); color: var(--text2); cursor: pointer; background: transparent; transition: all .15s; }
+  .pill:hover { background: var(--bg2); }
+  .pill.active { background: var(--bg3); color: var(--text); border-color: var(--border2); font-weight: 500; }
+
+  /* Map */
+  #map { width: 100%; margin-bottom: 0.5rem; }
+  #map svg { width: 100%; display: block; }
+  path.state { cursor: pointer; stroke: var(--bg); stroke-width: 0.5px; transition: opacity .1s; }
+  path.state:hover { opacity: 0.75; stroke-width: 1.5px; }
+  path.state.selected { stroke: var(--text); stroke-width: 2px; opacity: 1; }
+
+  /* Legend */
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 1.5rem; align-items: center; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text2); }
+  .legend-swatch { width: 14px; height: 14px; border-radius: 2px; flex-shrink: 0; }
+
+  /* State panel */
+  .state-panel {
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    background: var(--bg);
+    min-height: 160px;
+  }
+  .panel-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+  .panel-title { font-size: 17px; font-weight: 500; }
+  .badge { font-size: 11px; padding: 3px 9px; border-radius: 999px; }
+  .badge-r { background: var(--rep-light); color: var(--rep); }
+  .badge-d { background: var(--dem-light); color: var(--dem); }
+  .badge-n { background: var(--bg2); color: var(--text3); }
+  .panel-meta { display: flex; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+  .meta-item { font-size: 12px; color: var(--text2); }
+  .meta-item strong { color: var(--text); font-weight: 500; }
+
+  /* Bars */
+  .bar-grid { display: flex; flex-direction: column; gap: 9px; }
+  .bar-row { display: flex; align-items: center; gap: 10px; }
+  .bar-label { font-size: 12px; color: var(--text2); width: 86px; flex-shrink: 0; }
+  .bar-track { flex: 1; background: var(--bg2); border-radius: 3px; height: 10px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width .4s ease; }
+  .bar-pct { font-size: 12px; color: var(--text2); width: 44px; text-align: right; flex-shrink: 0; }
+  .panel-source { font-size: 11px; color: var(--text3); margin-top: 12px; }
+  .panel-source a { color: var(--text3); }
+
+  /* Loading / error */
+  .loading { font-size: 14px; color: var(--text3); padding: 2rem; text-align: center; }
+  .error { font-size: 13px; color: var(--rep); padding: 1rem; background: var(--rep-light); border-radius: var(--radius); margin-bottom: 1rem; }
+
+  /* Trend arrows in panel */
+  .trend-arrow { font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="page-header">
+    <div>
+      <div class="page-title">Voter Registration Tracker</div>
+      <div class="last-updated"><span class="status-dot"></span><span id="last-updated-text">Loading...</span></div>
+    </div>
+    <div style="font-size:12px; color:var(--text3); text-align:right; max-width:260px; line-height:1.5;">
+      30 states that publish party registration data. Updated each time a state publishes new figures.
+    </div>
+  </div>
+
+  <div id="error-banner" class="error" style="display:none"></div>
+
+  <div class="summary-grid" id="summary-grid">
+    <div class="sum-card"><div class="sum-label">Total registered</div><div class="sum-val" id="s-total">—</div></div>
+    <div class="sum-card"><div class="sum-label">Registered Democrat</div><div class="sum-val" id="s-dem" style="color:var(--dem)">—</div></div>
+    <div class="sum-card"><div class="sum-label">Registered Republican</div><div class="sum-val" id="s-rep" style="color:var(--rep)">—</div></div>
+    <div class="sum-card"><div class="sum-label">D lead (reporting states)</div><div class="sum-val" id="s-lead">—</div></div>
+    <div class="sum-card"><div class="sum-label">States shifting R</div><div class="sum-val" id="s-shiftr">—</div></div>
+    <div class="sum-card"><div class="sum-label">States shifting D</div><div class="sum-val" id="s-shiftd">—</div></div>
+  </div>
+
+  <div class="controls">
+    <button class="pill active" onclick="setMode('lead')">Party lead</button>
+    <button class="pill" onclick="setMode('dem')">% Democrat</button>
+    <button class="pill" onclick="setMode('rep')">% Republican</button>
+    <button class="pill" onclick="setMode('ind')">% Independent</button>
+  </div>
+
+  <div id="map"><div class="loading">Loading map...</div></div>
+  <div class="legend" id="legend"></div>
+
+  <div class="state-panel" id="state-panel">
+    <div class="loading">Click a state to see registration details.</div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<!-- Supabase JS client -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+// Replace these with your actual Supabase project values.
+// These are the PUBLIC anon key and URL — safe to expose in client-side JS.
+// RLS policies ensure only public read is allowed.
+const SUPABASE_URL      = "https://kycccxmbjqidwvyfpols.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5Y2NjeG1ianFpZHd2eWZwb2xzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMDY2ODUsImV4cCI6MjA5MTg4MjY4NX0.0A2mGqCYfLyf-d_Yh14Ije8KCjuQWaP6p-RceihxtxA";
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ── STATE ────────────────────────────────────────────────────────────────────
+let DATA = {};      // state_name → dashboard_view row
+let currentMode = "lead";
+let selectedState = null;
+
+// ── LOAD DATA ────────────────────────────────────────────────────────────────
+async function loadData() {
+  try {
+    const { data, error } = await sb
+      .from("dashboard_view")
+      .select("*");
+
+    if (error) throw error;
+
+    DATA = Object.fromEntries(data.map(r => [r.state_name, r]));
+
+    // Find most recent scrape
+    const timestamps = data.map(r => r.scrape_timestamp).filter(Boolean).sort().reverse();
+    if (timestamps.length) {
+      const d = new Date(timestamps[0]);
+      document.getElementById("last-updated-text").textContent =
+        "Data last updated " + d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    }
+
+    buildSummary();
+    renderMap();
+
+  } catch (err) {
+    document.getElementById("error-banner").style.display = "block";
+    document.getElementById("error-banner").textContent =
+      "Could not load data from Supabase: " + err.message +
+      ". Check your SUPABASE_URL and SUPABASE_ANON_KEY in dashboard/index.html.";
+    document.getElementById("last-updated-text").textContent = "Error loading data";
+    renderMap(); // Render empty map so the page isn't broken
+  }
+}
+
+// ── SUMMARY CARDS ────────────────────────────────────────────────────────────
+function fmt(n) {
+  if (n == null) return "—";
+  return n >= 1e6 ? (n/1e6).toFixed(1) + "M" : n >= 1e3 ? (n/1e3).toFixed(0) + "K" : String(n);
+}
+
+function buildSummary() {
+  const rows = Object.values(DATA);
+  if (!rows.length) return;
+
+  const total     = rows.reduce((a, r) => a + (r.total_registered || 0), 0);
+  const totalDem  = rows.reduce((a, r) => a + (r.dem_total || 0), 0);
+  const totalRep  = rows.reduce((a, r) => a + (r.rep_total || 0), 0);
+  const demPct    = total > 0 ? (totalDem / total * 100).toFixed(1) : 0;
+  const repPct    = total > 0 ? (totalRep / total * 100).toFixed(1) : 0;
+  const lead      = (demPct - repPct).toFixed(1);
+  const shiftR    = rows.filter(r => r.trend_direction === "R").length;
+  const shiftD    = rows.filter(r => r.trend_direction === "D").length;
+
+  document.getElementById("s-total").textContent = fmt(total);
+  document.getElementById("s-dem").textContent   = demPct + "%";
+  document.getElementById("s-rep").textContent   = repPct + "%";
+
+  const leadEl = document.getElementById("s-lead");
+  leadEl.textContent = (lead >= 0 ? "+" : "") + lead + "pp";
+  leadEl.style.color = lead >= 0 ? "var(--dem)" : "var(--rep)";
+
+  document.getElementById("s-shiftr").textContent = shiftR + " of " + rows.length;
+  document.getElementById("s-shiftd").textContent = shiftD + " of " + rows.length;
+}
+
+// ── COLOR SCALES ─────────────────────────────────────────────────────────────
+const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+const noDataColor = dark ? "#3a3a38" : "#ddd9d0";
+
+function getColor(name) {
+  const d = DATA[name];
+  if (!d) return noDataColor;
+
+  if (currentMode === "dem") {
+    return d3.scaleLinear().domain([10, 55]).range(["#b5d4f4","#042c53"]).clamp(true)(d.dem_pct);
+  }
+  if (currentMode === "rep") {
+    return d3.scaleLinear().domain([10, 80]).range(["#f7c1c1","#501313"]).clamp(true)(d.rep_pct);
+  }
+  if (currentMode === "ind") {
+    return d3.scaleLinear().domain([8, 62]).range(["#c0dd97","#173404"]).clamp(true)(d.ind_pct);
+  }
+  if (currentMode === "lead") {
+    const v = d.lead_margin_pp;
+    if (v > 0) return d3.scaleLinear().domain([0, 30]).range(["#dde9f7","#042c53"]).clamp(true)(v);
+    return d3.scaleLinear().domain([-30, 0]).range(["#501313","#f0c0c0"]).clamp(true)(v);
+  }
+}
+
+// ── LEGEND ───────────────────────────────────────────────────────────────────
+function buildLegend() {
+  const el = document.getElementById("legend");
+  el.innerHTML = "";
+  const sets = {
+    dem:  [["#b5d4f4","Low D"],["#378add","Mid"],["#042c53","High D"]],
+    rep:  [["#f7c1c1","Low R"],["#e24b4a","Mid"],["#501313","High R"]],
+    ind:  [["#c0dd97","Low I"],["#639922","Mid"],["#173404","High I"]],
+    lead: [["#501313","Strong R"],["#f0c0c0","Slight R"],["#dde9f7","Slight D"],["#042c53","Strong D"]],
+  };
+  (sets[currentMode] || []).forEach(([color, label]) => {
+    const div = document.createElement("div");
+    div.className = "legend-item";
+    div.innerHTML = `<span class="legend-swatch" style="background:${color}"></span>${label}`;
+    el.appendChild(div);
+  });
+  const noData = document.createElement("div");
+  noData.className = "legend-item";
+  noData.innerHTML = `<span class="legend-swatch" style="background:${noDataColor}"></span>No data`;
+  el.appendChild(noData);
+}
+
+// ── MODE SWITCH ───────────────────────────────────────────────────────────────
+function setMode(m) {
+  currentMode = m;
+  document.querySelectorAll(".pill").forEach((p, i) => {
+    p.classList.toggle("active", ["lead","dem","rep","ind"][i] === m);
+  });
+  d3.selectAll("path.state").attr("fill", d => getColor(d.properties.name));
+  buildLegend();
+  if (selectedState) renderPanel(selectedState);
+}
+
+// ── STATE DETAIL PANEL ────────────────────────────────────────────────────────
+function renderPanel(name) {
+  selectedState = name;
+  const d = DATA[name];
+  const panel = document.getElementById("state-panel");
+
+  if (!d) {
+    panel.innerHTML = `
+      <div class="panel-header"><div class="panel-title">${name}</div></div>
+      <p style="font-size:13px; color:var(--text3)">
+        This state does not publish party registration data.
+      </p>`;
+    return;
+  }
+
+  const trendLabel = d.trend_direction === "R" ? "shifting R"
+                   : d.trend_direction === "D" ? "shifting D"
+                   : "stable";
+  const badgeClass = d.trend_direction === "R" ? "badge-r"
+                   : d.trend_direction === "D" ? "badge-d"
+                   : "badge-n";
+
+  const mag = d.magnitude && d.magnitude !== "stable"
+    ? ` <span style="font-size:11px; color:var(--text3)">(${d.magnitude})</span>` : "";
+
+  const lead = d.lead_margin_pp;
+  const leadStr = Math.abs(lead).toFixed(1) + "pp " + (lead >= 0 ? "D lead" : "R lead");
+  const leadColor = lead >= 0 ? "var(--dem)" : "var(--rep)";
+
+  const publishedDate = d.state_published_date
+    ? new Date(d.state_published_date).toLocaleDateString("en-US", { month: "short", year: "numeric" })
+    : "Unknown";
+
+  const deltaRow = (d.dem_delta_pp != null)
+    ? `<div class="meta-item">Change since prior: <strong style="color:${d.dem_delta_pp >= 0 ? 'var(--dem)' : 'inherit'}">D ${d.dem_delta_pp >= 0 ? "+" : ""}${(d.dem_delta_pp||0).toFixed(1)}pp</strong> / <strong style="color:${d.rep_delta_pp >= 0 ? 'var(--rep)' : 'inherit'}">R ${d.rep_delta_pp >= 0 ? "+" : ""}${(d.rep_delta_pp||0).toFixed(1)}pp</strong></div>`
+    : "";
+
+  const bars = [
+    { label: "Democrat",    pct: d.dem_pct, color: "var(--dem)", total: d.dem_total },
+    { label: "Republican",  pct: d.rep_pct, color: "var(--rep)", total: d.rep_total },
+    { label: "Independent", pct: d.ind_pct, color: "var(--ind)", total: d.ind_total },
+    { label: "Other",       pct: d.other_pct, color: "var(--text3)", total: d.other_total },
+  ];
+
+  panel.innerHTML = `
+    <div class="panel-header">
+      <div class="panel-title">${name}</div>
+      <span class="badge ${badgeClass}">${trendLabel}${mag}</span>
+    </div>
+    <div class="panel-meta">
+      <div class="meta-item">Total registered: <strong>${(d.total_registered||0).toLocaleString()}</strong></div>
+      <div class="meta-item">Party lead: <strong style="color:${leadColor}">${leadStr}</strong></div>
+      <div class="meta-item">State published: <strong>${publishedDate}</strong></div>
+      ${deltaRow}
+    </div>
+    <div class="bar-grid">
+      ${bars.map(b => `
+        <div class="bar-row">
+          <span class="bar-label">${b.label}</span>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${(b.pct||0).toFixed(1)}%; background:${b.color}"></div>
+          </div>
+          <span class="bar-pct">${(b.pct||0).toFixed(1)}%</span>
+        </div>
+      `).join("")}
+    </div>
+    <div class="panel-source">
+      Source: ${d.source_url
+        ? `<a href="${d.source_url}" target="_blank" rel="noopener">${d.source_url}</a>`
+        : "State election office"}
+    </div>
+  `;
+}
+
+// ── MAP ───────────────────────────────────────────────────────────────────────
+function renderMap() {
+  document.getElementById("map").innerHTML = "";
+
+  const w = Math.max(document.getElementById("map").clientWidth || 700, 400);
+  const h = Math.round(w * 0.62);
+
+  const svg = d3.select("#map").append("svg")
+    .attr("viewBox", `0 0 ${w} ${h}`)
+    .attr("width", "100%");
+
+  const proj = d3.geoAlbersUsa()
+    .scale(w * 1.25)
+    .translate([w / 2, h / 2]);
+  const path = d3.geoPath(proj);
+
+  d3.json("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json").then(us => {
+    svg.selectAll("path.state")
+      .data(topojson.feature(us, us.objects.states).features)
+      .join("path")
+      .attr("class", "state")
+      .attr("d", path)
+      .attr("fill", d => getColor(d.properties.name))
+      .on("click", function(event, d) {
+        d3.selectAll("path.state").classed("selected", false);
+        d3.select(this).classed("selected", true);
+        renderPanel(d.properties.name);
+      });
+
+    buildLegend();
+  });
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+loadData();
+</script>
+</body>
+</html>
